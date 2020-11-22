@@ -1,0 +1,73 @@
+- name: Preparing node
+  hosts: all
+  gather_facts: False
+  pre_tasks:
+    - name: Install python 2 if not there
+      raw: test -e /usr/bin/python || (yum install -y python python-pip libselinux-python)
+      register: output
+      changed_when: output.stdout|trim() != ""
+    - name: Install sudo if not there
+      raw: test -e /usr/bin/sudo || yum install -y sudo
+      register: output
+      changed_when: output.stdout|trim() != ""
+
+- name: Configure users
+  hosts: all
+  roles:
+    - name: sysctl
+      become: yes
+      tags:
+        - sysctl
+
+- name: install epel-relase, git
+  hosts: all
+  tasks:
+  - name: install epel-release
+    yum: 
+      name: epel-release
+  - name: install git
+    yum: 
+      name: 
+      - http://opensource.wandisco.com/centos/6/git/i686/wandisco-git-release-6-1.noarch.rpm
+  - name: update git
+    yum:
+      name: git
+      state: latest
+  become: yes
+  tags:
+    - git
+
+- name: install go
+  hosts: all
+  tasks:
+  - name: install golang, glibc-static
+    yum: 
+      state: latest
+      name: 
+      - golang-go
+      - glibc-static
+  become: yes
+  tags:
+    - golang
+
+- name: Install Node Exporter
+  hosts: all
+  gather_facts: False
+  tasks:
+  - name: go get github.com/godbus/dbus 
+    shell: go get github.com/godbus/dbus
+  - name: go get github.com/prometheus/node_exporter 
+    shell: go get github.com/prometheus/node_exporter
+  - name: make
+    shell: test -e node_exporter || go build .
+    args:
+      chdir: /root/go/src/github.com/prometheus/node_exporter
+  - name: Upload service file to remote
+    copy: 
+      src: files/node_exporter
+      dest: /etc/rc.d/init.d/node_exporter
+      owner: root
+      group: root
+      mode: '0755'
+  - name: Start the service
+    shell: /etc/rc.d/init.d/node_exporter start
